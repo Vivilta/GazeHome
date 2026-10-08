@@ -1,0 +1,6 @@
+{
+  "name": "GazeHome - Simulated BCI Gaze Control Interface",
+  "description": "Webcam gaze-tracking smart home interface simulating BCI-style target selection with dwell activation, experimental trials, and CSV export.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
