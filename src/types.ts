@@ -18,6 +18,8 @@ export type TrackingStatus =
   | 'paused'
   | 'error';
 
+export type FaceTrackingStatus = 'not_detected' | 'detected' | 'moving' | 'stable';
+
 export type AppMode = 'manual' | 'experiment';
 
 export type DwellTimeOption = 0.5 | 1.0 | 1.5;
@@ -71,8 +73,23 @@ export interface CalibrationPoint {
 
 export interface CalibrationResult {
   validSampleCount: number;
+  rawSampleCount: number;
+  discardedSampleCount: number;
   meanErrorPx: number;
   medianErrorPx: number;
   withinTolerancePercent: number;
+  regionErrors: CalibrationRegionError[];
   passed: boolean;
+}
+
+export interface CalibrationRegionError {
+  id: string;
+  label: string;
+  xPercent: number;
+  yPercent: number;
+  calibrationPointIndex: number;
+  sampleCount: number;
+  medianErrorPx: number;
+  meanErrorPx: number;
+  withinTolerancePercent: number;
 }

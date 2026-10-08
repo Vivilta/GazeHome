@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { TrackingStatus, GazeCoordinates } from '../types';
+import { FaceTrackingStatus, TrackingStatus, GazeCoordinates } from '../types';
 import { loadWebGazerScript, cleanupWebGazerDOM } from '../services/webgazerLoader';
 
 interface UseGazeTrackerReturn {
   trackingStatus: TrackingStatus;
+  faceStatus: FaceTrackingStatus;
   errorMessage: string | null;
   gazeCoords: GazeCoordinates;
   showGazeDot: boolean;
@@ -20,16 +21,18 @@ interface UseGazeTrackerReturn {
   pauseTracking: () => void;
   resumeTracking: () => void;
   startCalibration: () => void;
+  startLocalCalibration: () => void;
   startValidation: () => void;
   finishCalibration: () => void;
   cancelCalibration: () => void;
   recordCalibrationPoint: (x: number, y: number) => void;
-  setCameraPreviewVisible: (visible: boolean) => void;
+  setCameraPreviewVisible: (visible: boolean, showFaceGuide?: boolean) => void;
   setManualGazeCoords: (x: number, y: number) => void;
 }
 
 export function useGazeTracker(): UseGazeTrackerReturn {
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('not_started');
+  const [faceStatus, setFaceStatus] = useState<FaceTrackingStatus>('not_detected');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showGazeDot, setShowGazeDot] = useState<boolean>(true);
   const [isDemoSimulation, setIsDemoSimulation] = useState<boolean>(false);
@@ -46,6 +49,7 @@ export function useGazeTracker(): UseGazeTrackerReturn {
   const trackingStatusRef = useRef<TrackingStatus>('not_started');
   const calibrationReturnStatusRef = useRef<TrackingStatus>('not_started');
   const gazeFreshnessTimeoutRef = useRef<number | null>(null);
+  const gazeHistoryRef = useRef<Array<{ x: number; y: number; timestamp: number }>>([]);
 
   const resetCalibrationModel = useCallback(() => {
     const webgazer = window.webgazer;
@@ -85,6 +89,27 @@ export function useGazeTracker(): UseGazeTrackerReturn {
   // Exponential moving average filter coefficient
   const SMOOTHING_FACTOR = 0.35; // 35% new, 65% old for steady dwell stabilization
 
+  const updateFaceStatus = useCallback((x: number, y: number, timestamp: number) => {
+    const history = [
+      ...gazeHistoryRef.current.filter((sample) => timestamp - sample.timestamp <= 900),
+      { x, y, timestamp },
+    ];
+    gazeHistoryRef.current = history.slice(-24);
+
+    if (history.length < 5) {
+      setFaceStatus('detected');
+      return;
+    }
+
+    const meanX = history.reduce((sum, sample) => sum + sample.x, 0) / history.length;
+    const meanY = history.reduce((sum, sample) => sum + sample.y, 0) / history.length;
+    const maxDeviation = Math.max(
+      ...history.map((sample) => Math.hypot(sample.x - meanX, sample.y - meanY)),
+    );
+
+    setFaceStatus(maxDeviation <= 42 ? 'stable' : 'moving');
+  }, []);
+
   const updateGaze = useCallback((rawX: number, rawY: number) => {
     if (isNaN(rawX) || isNaN(rawY)) return;
 
@@ -103,6 +128,8 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     }
 
     lastCoordsRef.current = { x: smoothX, y: smoothY };
+    const timestamp = performance.now();
+    updateFaceStatus(smoothX, smoothY, timestamp);
 
     if (gazeFreshnessTimeoutRef.current !== null) {
       window.clearTimeout(gazeFreshnessTimeoutRef.current);
@@ -111,19 +138,22 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     setGazeCoords({
       x: Math.round(smoothX),
       y: Math.round(smoothY),
-      timestamp: performance.now(),
+      timestamp,
       isValid: true,
     });
 
     gazeFreshnessTimeoutRef.current = window.setTimeout(() => {
       setGazeCoords((current) => ({ ...current, isValid: false }));
       lastCoordsRef.current = { x: 0, y: 0 };
+      gazeHistoryRef.current = [];
+      setFaceStatus('not_detected');
       gazeFreshnessTimeoutRef.current = null;
     }, 700);
   }, []);
 
   const setManualGazeCoords = useCallback((x: number, y: number) => {
     lastCoordsRef.current = { x, y };
+    setFaceStatus('stable');
     setGazeCoords({
       x: Math.round(x),
       y: Math.round(y),
@@ -132,9 +162,16 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     });
   }, []);
 
-  const setCameraPreviewVisible = useCallback((visible: boolean) => {
+  const setCameraPreviewVisible = useCallback((visible: boolean, showFaceGuide = true) => {
     const videoContainer = document.getElementById('webgazerVideoContainer');
     if (!videoContainer) return;
+
+    const existingGuide = document.getElementById('gazeFaceGuide');
+    if (!visible) {
+      if (existingGuide) existingGuide.remove();
+      videoContainer.style.display = 'none';
+      return;
+    }
 
     videoContainer.style.display = visible ? 'block' : 'none';
     videoContainer.style.position = 'fixed';
@@ -170,10 +207,30 @@ export function useGazeTracker(): UseGazeTrackerReturn {
       video.style.objectFit = 'cover';
       video.style.objectPosition = 'center';
     }
+
+    let faceGuide = existingGuide;
+    if (!faceGuide) {
+      faceGuide = document.createElement('div');
+      faceGuide.id = 'gazeFaceGuide';
+      faceGuide.setAttribute('aria-hidden', 'true');
+      videoContainer.appendChild(faceGuide);
+    }
+
+    faceGuide.style.display = showFaceGuide ? 'block' : 'none';
+    faceGuide.style.position = 'absolute';
+    faceGuide.style.inset = '12% 18% 16%';
+    faceGuide.style.border = '2px solid rgba(167, 243, 208, 0.82)';
+    faceGuide.style.borderRadius = '48% 48% 44% 44%';
+    faceGuide.style.boxShadow = '0 0 0 999px rgba(15, 23, 42, 0.10), inset 0 0 20px rgba(167, 243, 208, 0.10)';
+    faceGuide.style.pointerEvents = 'none';
+    faceGuide.style.zIndex = '3';
+    faceGuide.style.transition = 'opacity 180ms ease';
   }, []);
 
   const startTracking = useCallback(async () => {
     setErrorMessage(null);
+    setFaceStatus('not_detected');
+    gazeHistoryRef.current = [];
     calibrationReturnStatusRef.current = 'not_started';
     trackingStatusRef.current = 'checking_camera';
     setTrackingStatus('checking_camera');
@@ -242,6 +299,8 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     setErrorMessage(null);
     setGazeCoords({ x: 0, y: 0, timestamp: 0, isValid: false });
     lastCoordsRef.current = { x: 0, y: 0 };
+    gazeHistoryRef.current = [];
+    setFaceStatus('not_detected');
   }, [setCameraPreviewVisible]);
 
   const pauseTracking = useCallback(() => {
@@ -271,6 +330,12 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     trackingStatusRef.current = 'calibrating';
     setTrackingStatus('calibrating');
   }, [resetCalibrationModel]);
+
+  const startLocalCalibration = useCallback(() => {
+    trackingStatusRef.current = 'calibrating';
+    setTrackingStatus('calibrating');
+    isTrackingActiveRef.current = true;
+  }, []);
 
   const startValidation = useCallback(() => {
     trackingStatusRef.current = 'validating';
@@ -334,8 +399,9 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     };
   }, []);
 
-  return {
+    return {
     trackingStatus,
+    faceStatus,
     errorMessage,
     gazeCoords,
     showGazeDot,
@@ -347,6 +413,7 @@ export function useGazeTracker(): UseGazeTrackerReturn {
     pauseTracking,
     resumeTracking,
     startCalibration,
+    startLocalCalibration,
     startValidation,
     finishCalibration,
     cancelCalibration,

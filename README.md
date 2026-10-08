@@ -49,7 +49,8 @@ If port `3000` is already occupied, Vite may select the next available port. Alw
 3. When the browser asks for camera access, choose `Allow`.
 4. In `Set up your camera position`, make sure the face and both eyes are visible in the preview.
 5. Sit at a comfortable distance, face the screen, use steady lighting, and keep the head roughly still. Small natural movements and blinking are acceptable.
-6. Click `Begin 9-point calibration`.
+6. Optionally keep the soft face guide enabled. It is a visual reference, not a strict head-position constraint.
+7. Click `Begin 9-point calibration`.
 
 ## 4. Calibration Procedure
 
@@ -58,10 +59,11 @@ If port `3000` is already occupied, Vite may select the next available port. Alw
 The blue target is shown sequentially at nine screen positions. For each position:
 
 1. Look directly at the blue target.
-2. Click the target five times while continuing to look at it.
+2. Wait until the interface reports `Position stable`.
+3. Click the target five times, waiting for the stable indicator before each click.
 3. Wait for the next target to appear.
 
-The clicks provide WebGazer with screen-coordinate training samples. The blue number shows how many clicks remain for the current point.
+The clicks provide WebGazer with screen-coordinate training samples. Samples are recorded only after a short stability window. The blue number shows how many samples remain for the current point.
 
 ### 4.2 Independent accuracy check
 
@@ -72,7 +74,7 @@ After all nine points are completed, the app automatically starts a separate fiv
 3. Keep your gaze on it until the progress bar completes.
 4. Repeat for all five validation points.
 
-The app reports the number of samples, median error, and the percentage of samples inside the tolerance. Click `Use calibration and start tracking` to enter the main interface. If the result is poor, use `Retry calibration` or first use `Adjust camera`.
+The app reports the number of samples, overall `Median Error`, overall `Within Tolerance`, and the same metrics for the top-left, top-right, center, bottom-left, and bottom-right regions. Isolated validation errors are filtered with a robust median/MAD rule. Click `Use calibration and start tracking` to enter the main interface. If the result is poor, use `Recalibrate weakest region` to repeat only the region with the largest error, or use `Retry all 9 points` for a complete reset.
 
 During calibration, WebGazer uses a Ridge regression model, Kalman filtering, and an additional smoothing step. The validation result is an estimate from a normal webcam, not laboratory-grade ground truth.
 
@@ -85,6 +87,7 @@ Manual Mode is the quickest way to check that the interface works:
 - Click an appliance card to toggle its `ON` / `OFF` state.
 - With tracking active, look at an appliance card and hold your gaze until the dwell progress reaches the selected threshold.
 - The dwell progress appears inside the focused appliance card. Moving your gaze away resets the progress.
+- The gaze indicator is a translucent halo with a short trail. It represents an estimate and should not be chased precisely.
 - Select the dwell threshold in `Dwell Time Threshold`: `0.5 s`, `1.0 s`, or `1.5 s`.
 - Use `Turn All OFF` to reset all four appliances.
 

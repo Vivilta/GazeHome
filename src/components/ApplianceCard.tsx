@@ -98,7 +98,7 @@ export const ApplianceCard: React.FC<ApplianceCardProps> = ({
           onClick(device);
         }
       }}
-      className={`relative group select-none cursor-pointer rounded-2xl ${compact ? 'p-2 sm:p-3 min-h-[145px] sm:min-h-[155px] lg:min-h-[165px]' : 'p-4 sm:p-5 min-h-[175px] sm:min-h-[185px] lg:min-h-[190px]'} flex flex-col justify-between transition-all duration-200 border-2 overflow-hidden ${
+      className={`relative group select-none cursor-pointer rounded-2xl ${compact ? 'p-2 sm:p-3 min-h-[174px] sm:min-h-[186px] lg:min-h-[198px]' : 'p-4 sm:p-5 min-h-[210px] sm:min-h-[222px] lg:min-h-[228px]'} flex flex-col justify-between transition-all duration-200 border-2 overflow-hidden ${
         isFocused
           ? 'border-blue-500 ring-4 ring-blue-500/20 shadow-lg scale-[1.01]'
           : isOn

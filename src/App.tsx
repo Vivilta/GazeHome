@@ -100,6 +100,7 @@ export default function App() {
   // 3. Gaze Tracker Hook
   const {
     trackingStatus,
+    faceStatus,
     errorMessage,
     gazeCoords,
     showGazeDot,
@@ -109,6 +110,7 @@ export default function App() {
     startTracking,
     stopTracking,
     startCalibration,
+    startLocalCalibration,
     startValidation,
     finishCalibration,
     cancelCalibration,
@@ -568,7 +570,9 @@ export default function App() {
       <CalibrationOverlay
         isOpen={isCalibrationOpen}
         gazeCoords={gazeCoords}
+        faceStatus={faceStatus}
         onBeginPointCalibration={startCalibration}
+        onBeginLocalCalibration={startLocalCalibration}
         onStartValidation={startValidation}
         onValidationComplete={() => undefined}
         onCameraPreviewVisible={setCameraPreviewVisible}
