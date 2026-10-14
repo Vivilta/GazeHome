@@ -178,6 +178,14 @@ function getWeakCalibrationRegions(regions: CalibrationRegionError[]) {
     });
 }
 
+function getRecalibrationCandidates(regions: CalibrationRegionError[], includePassingRegions: boolean) {
+  return includePassingRegions
+    ? regions
+      .filter((region) => region.sampleCount > 0)
+      .sort((a, b) => b.medianErrorPx - a.medianErrorPx)
+    : getWeakCalibrationRegions(regions).filter((region) => region.sampleCount > 0);
+}
+
 function faceStatusCopy(status: FaceTrackingStatus) {
   switch (status) {
     case 'stable':
@@ -508,8 +516,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         },
       });
       setValidationResult(result);
-      const localCandidates = getWeakCalibrationRegions(regionErrors)
-        .filter((region) => region.sampleCount > 0);
+      const localCandidates = getRecalibrationCandidates(regionErrors, result.passed);
       setSelectedLocalRegionIds(localCandidates.slice(0, 1).map((region) => region.id));
       setPhase('result');
       onValidationCompleteRef.current(result);
@@ -839,8 +846,8 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   const startLocalRecalibration = () => {
     if (!validationResult || validationResult.regionErrors.length === 0) return;
 
-    const weakRegions = getWeakCalibrationRegions(validationResult.regionErrors);
-    const selectedRegions = weakRegions.filter((region) => (
+    const candidates = getRecalibrationCandidates(validationResult.regionErrors, validationResult.passed);
+    const selectedRegions = candidates.filter((region) => (
       region.sampleCount > 0 && selectedLocalRegionIds.includes(region.id)
     ));
     if (selectedRegions.length === 0) return;
@@ -1057,7 +1064,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         </div>
         <div>
           <span className="block text-slate-500">Within Tolerance</span>
-          <strong className={`mt-0.5 block font-mono text-sm ${region.withinTolerancePercent >= 60 ? 'text-emerald-300' : 'text-amber-300'}`}>
+        <strong className={`mt-0.5 block font-mono text-sm ${region.withinTolerancePercent >= validationMetrics.passWithinTolerancePercent ? 'text-emerald-300' : 'text-amber-300'}`}>
             {Math.round(region.withinTolerancePercent)}%
           </strong>
         </div>
@@ -1070,7 +1077,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     if (!validationResult) return null;
     const passed = validationResult.passed;
     const weakRegions = getWeakCalibrationRegions(validationResult.regionErrors);
-    const localCandidates = weakRegions.filter((region) => region.sampleCount > 0);
+    const localCandidates = getRecalibrationCandidates(validationResult.regionErrors, passed);
     const selectedLocalCandidates = localCandidates.filter((region) => selectedLocalRegionIds.includes(region.id));
     const canRecalibrateLocally = selectedLocalCandidates.length > 0;
     return (
@@ -1083,9 +1090,9 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         <h2 className="mt-4 text-2xl font-bold">{passed ? 'Calibration passed' : 'Calibration needs improvement'}</h2>
         <p className="mt-2 text-sm text-slate-300">
           {passed
-            ? 'The estimated gaze was stable enough for the four appliance regions.'
+            ? 'Calibration meets the 65% minimum. You can still improve the weakest regions before tracking.'
             : canRecalibrateLocally
-            ? `${localCandidates.length} region${localCandidates.length === 1 ? '' : 's'} need improvement. Select one or more weak regions for local recalibration, or repeat all 9 points.`
+            ? `${weakRegions.length} region${weakRegions.length === 1 ? '' : 's'} need improvement. Select one or more weak regions for local recalibration, or repeat all 9 points.`
             : 'Several regions need improvement. Select weak regions for local recalibration, or repeat the complete 9-point calibration.'}
         </p>
         <div className="mt-5 grid grid-cols-2 gap-2 text-left sm:grid-cols-4">
@@ -1147,6 +1154,32 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
             </div>
           </div>
         )}
+        {passed && localCandidates.length > 0 && (
+          <div className="mt-5 rounded-lg border border-sky-400/20 bg-sky-400/5 p-3 text-left">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-200">Optional accuracy improvement</h3>
+            <p className="mt-1 text-xs text-slate-400">A passing result is usable, but you can recalibrate one or more regions to try to reduce the remaining error.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {localCandidates.map((region) => (
+                <label key={region.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-700 bg-slate-900/70 p-2 text-xs text-slate-200 hover:border-sky-400/60">
+                  <input
+                    type="checkbox"
+                    checked={selectedLocalRegionIds.includes(region.id)}
+                    onChange={() => setSelectedLocalRegionIds((current) => (
+                      current.includes(region.id)
+                        ? current.filter((id) => id !== region.id)
+                        : [...current, region.id]
+                    ))}
+                    className="mt-0.5 accent-sky-400"
+                  />
+                  <span>
+                    <strong className="block">{region.label}</strong>
+                    <span className="text-[10px] text-slate-400">Median {Math.round(region.medianErrorPx)} px · {Math.round(region.withinTolerancePercent)}% within tolerance</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
@@ -1156,28 +1189,24 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
             <Camera className="h-4 w-4" />
             Adjust camera
           </button>
-          {!passed && (
-            <>
-              {localCandidates.length > 0 && canRecalibrateLocally && (
-                <button
-                  type="button"
-                  onClick={startLocalRecalibration}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-300"
-                >
-                  <Target className="h-4 w-4" />
-                  Recalibrate selected ({selectedLocalCandidates.length})
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={resetCalibration}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Retry all 9 points
-              </button>
-            </>
+          {localCandidates.length > 0 && canRecalibrateLocally && (
+            <button
+              type="button"
+              onClick={startLocalRecalibration}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-300"
+            >
+              <Target className="h-4 w-4" />
+              Recalibrate selected ({selectedLocalCandidates.length})
+            </button>
           )}
+          <button
+            type="button"
+            onClick={resetCalibration}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Retry all 9 points
+          </button>
           <button
             type="button"
             onClick={onFinish}

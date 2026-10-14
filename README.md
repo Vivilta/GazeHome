@@ -14,7 +14,7 @@ The project supports:
 
 ## 1. Requirements
 
-- Node.js `20.19+` or `22.12+`. Node.js 24 and npm 11 have been used successfully with the current project.
+- Node.js `20.19+` or `22.12+`.
 - npm.
 - A modern browser such as Chrome or Edge for webcam tracking.
 - A working webcam for real gaze tracking. Demo Sim and mouse clicks work without a webcam.
@@ -24,15 +24,16 @@ No Gemini API key is required for the current application. The UI does not curre
 
 ## 2. Install and Start
 
-Open Terminal and run:
+Clone the repository, open a terminal in the project directory, and run:
 
 ```bash
-cd /Users/vivi/Documents/BN5213/gazehome
+git clone https://github.com/Vivilta/GazeHome.git
+cd GazeHome
 npm install
 npm run dev
 ```
 
-Then open:
+Open the URL printed in the terminal, usually:
 
 ```text
 http://localhost:3000/
@@ -80,7 +81,7 @@ After all nine points are completed, the app automatically starts a separate fiv
 3. Keep your gaze on it while the app collects stable samples.
 4. Repeat for all five validation points.
 
-The app reports the number of samples, overall `Median Error`, overall `Within Tolerance`, and the same metrics for the top-left, top-right, center, bottom-left, and bottom-right regions. Isolated validation errors are filtered with a robust median/MAD rule. Click `Use calibration and start tracking` to enter the main interface. If the result is poor, use `Recalibrate weakest region` to repeat only the region with the largest error, or use `Retry all 9 points` for a complete reset.
+The app reports the number of samples, overall `Median Error`, overall `Within Tolerance`, and the same metrics for the top-left, top-right, center, bottom-left, and bottom-right regions. Isolated validation errors are filtered with a robust median/MAD rule. The minimum passing threshold is configured in `src/config/calibration.ts` and currently requires 65% of retained samples within tolerance. After a passing result, you can still select one or more regions for optional accuracy improvement. After a failed result, select one or more weak regions for local recalibration, or use `Retry all 9 points` for a complete reset.
 
 During calibration, WebGazer uses a Ridge regression model, Kalman filtering, and an additional smoothing step. The validation result is an estimate from a normal webcam, not laboratory-grade ground truth.
 
@@ -175,12 +176,6 @@ For a production preview, run `npm run build` first and then `npm run preview`. 
 
 Real tracking loads WebGazer from `https://cdn.jsdelivr.net/npm/webgazer@3.3.0/dist/webgazer.js`, with a secondary CDN fallback. Check the network connection, firewall, or campus network restrictions. Mouse clicks and `Demo Sim` do not need WebGazer.
 
-### Calibration accuracy is low
-
-- Keep the face and both eyes visible throughout setup and calibration.
-- Keep the head roughly still while looking at each point; normal blinking is fine.
-- Avoid strong backlight, glare, and changing lighting.
-
 ### Collect gaze diagnostics
 
 When the interface repeatedly shows `gaze signal unavailable`, open the browser developer console before clicking `Start Tracking`. The app writes structured entries with the `[GazeDiagnostics]` prefix, including camera startup, WebGazer callback counts, raw and smoothed coordinates, rejected coordinates, freshness timeouts, stability changes, and every calibration sample.
@@ -198,7 +193,13 @@ window.gazeHomeDiagnostics.download()
 ```
 
 The diagnostics contain timestamps and numeric gaze data only. They do not store camera frames, face images, or video.
+
+### Calibration accuracy is low
+
 - Sit at a comfortable, stable distance from the screen.
+- Keep the face and both eyes visible throughout setup and calibration.
+- Keep the head roughly still while looking at each point; normal blinking is fine.
+- Avoid strong backlight, glare, and changing lighting.
 - Recalibrate after changing the camera position, screen position, lighting, or seating posture.
 - Use the validation result to decide whether to retry rather than relying only on the moving gaze marker.
 

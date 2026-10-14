@@ -115,6 +115,6 @@ export const CALIBRATION_CONFIG = {
     passMedianErrorRatio: 0.2,
 
     // Minimum percentage of samples that must be within tolerance to pass.
-    passWithinTolerancePercent: 60,
+    passWithinTolerancePercent: 65,
   },
 } as const;
