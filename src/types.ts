@@ -18,7 +18,16 @@ export type TrackingStatus =
   | 'paused'
   | 'error';
 
-export type FaceTrackingStatus = 'not_detected' | 'detected' | 'moving' | 'stable';
+export type FaceTrackingStatus =
+  | 'not_detected'
+  | 'gaze_unavailable'
+  | 'detected'
+  | 'moving'
+  | 'stable';
+
+export type GazeStabilityStatus = 'warming_up' | 'unavailable' | 'moving' | 'stable';
+
+export type CameraPreviewAnchor = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export type AppMode = 'manual' | 'experiment';
 
@@ -29,6 +38,15 @@ export interface GazeCoordinates {
   y: number;
   timestamp: number;
   isValid: boolean;
+}
+
+export interface CalibrationPointRecordResult {
+  recorded: boolean;
+  reason?: string;
+  eyeFeatureFrameId?: number;
+  eyeFeaturesAgeMs?: number | null;
+  trainingSampleCountBefore?: number | null;
+  trainingSampleCountAfter?: number | null;
 }
 
 export interface ExperimentCommand {
@@ -92,4 +110,48 @@ export interface CalibrationRegionError {
   medianErrorPx: number;
   meanErrorPx: number;
   withinTolerancePercent: number;
+}
+
+export type CalibrationSamplePhase = 'training' | 'validation';
+
+/** One observed target/prediction pair captured during a calibration session. */
+export interface CalibrationSampleRecord {
+  sampleId: string;
+  sessionId: string;
+  participant: string;
+  phase: CalibrationSamplePhase;
+  pointId: string;
+  pointIndex: number;
+  region: string;
+  targetX: number;
+  targetY: number;
+  predictedX: number | null;
+  predictedY: number | null;
+  errorPx: number | null;
+  gazeStability?: GazeStabilityStatus;
+  eyeFeatureFrameId?: number;
+  eyeFeaturesAgeMs?: number;
+  gazeTimestamp?: number;
+  accepted?: boolean;
+  timestamp: string;
+}
+
+/** Persistent per-participant record for one calibration/validation run. */
+export interface CalibrationSessionRecord {
+  sessionId: string;
+  participant: string;
+  calibratedAt: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  mode: 'full' | 'local';
+  samples: CalibrationSampleRecord[];
+  result: CalibrationResult;
+  config: {
+    samplesPerPoint: number;
+    stableWaitMs: number;
+    sampleIntervalMs: number;
+    maxEyeFeatureAgeMs: number;
+    smoothingFactor: number;
+    validationSamplesPerPoint: number;
+  };
 }

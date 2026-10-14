@@ -15,10 +15,11 @@ import {
   User,
 } from 'lucide-react';
 import {
+  CalibrationSessionRecord,
   TrialRecord,
   DwellTimeOption,
 } from '../types';
-import { generateTrialsCsv, downloadFile } from '../utils/csv';
+import { generateCalibrationCsv, generateTrialsCsv, downloadFile } from '../utils/csv';
 
 interface ExperimentPanelProps {
   isRunning: boolean;
@@ -29,6 +30,7 @@ interface ExperimentPanelProps {
   onParticipantIdChange: (id: string) => void;
   onClearTrials: () => void;
   onOpenSurvey: () => void;
+  calibrationSessions: CalibrationSessionRecord[];
 }
 
 export const ExperimentPanel: React.FC<ExperimentPanelProps> = ({
@@ -40,6 +42,7 @@ export const ExperimentPanel: React.FC<ExperimentPanelProps> = ({
   onParticipantIdChange,
   onClearTrials,
   onOpenSurvey,
+  calibrationSessions,
 }) => {
   // Compute authentic descriptive metrics strictly from recorded trials
   const totalTrials = trials.length;
@@ -62,6 +65,16 @@ export const ExperimentPanel: React.FC<ExperimentPanelProps> = ({
     const csv = generateTrialsCsv(trials);
     const dateStr = new Date().toISOString().slice(0, 10);
     downloadFile(csv, `gazehome_trials_${participantId}_${dateStr}.csv`);
+  };
+
+  const handleExportCalibrationCsv = () => {
+    if (calibrationSessions.length === 0) {
+      alert('No calibration data available to export yet. Complete calibration and validation first.');
+      return;
+    }
+    const csv = generateCalibrationCsv(calibrationSessions);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadFile(csv, `gazehome_calibration_${participantId}_${dateStr}.csv`);
   };
 
   return (
@@ -188,9 +201,18 @@ export const ExperimentPanel: React.FC<ExperimentPanelProps> = ({
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 rounded-lg shadow-2xs transition-colors"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Export CSV</span>
+            <span>Export Trials</span>
           </button>
         </div>
+        <button
+          type="button"
+          onClick={handleExportCalibrationCsv}
+          disabled={calibrationSessions.length === 0}
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 disabled:opacity-40 disabled:pointer-events-none border border-sky-200 rounded-lg transition-colors"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5 text-sky-600" />
+          <span>Export Calibration ({calibrationSessions.length})</span>
+        </button>
 
         {totalTrials > 0 && !isRunning && (
           <button

@@ -98,7 +98,7 @@ export const ApplianceCard: React.FC<ApplianceCardProps> = ({
           onClick(device);
         }
       }}
-      className={`relative group select-none cursor-pointer rounded-2xl ${compact ? 'p-2 sm:p-3 min-h-[174px] sm:min-h-[186px] lg:min-h-[198px]' : 'p-4 sm:p-5 min-h-[210px] sm:min-h-[222px] lg:min-h-[228px]'} flex flex-col justify-between transition-all duration-200 border-2 overflow-hidden ${
+      className={`relative group select-none cursor-pointer rounded-2xl ${compact ? 'p-2 sm:p-2.5 min-h-[210px] sm:min-h-[222px] lg:min-h-[228px]' : 'p-4 sm:p-5 min-h-[210px] sm:min-h-[222px] lg:min-h-[228px]'} flex flex-col justify-between transition-all duration-200 border-2 overflow-hidden ${
         isFocused
           ? 'border-blue-500 ring-4 ring-blue-500/20 shadow-lg scale-[1.01]'
           : isOn
@@ -143,16 +143,16 @@ export const ApplianceCard: React.FC<ApplianceCardProps> = ({
       </div>
 
       {/* Center Device Visualization */}
-      <div className={`${compact ? 'my-1' : 'my-2 sm:my-3'} flex items-center justify-center`}>
+      <div className={`${compact ? 'my-0.5' : 'my-2 sm:my-3'} flex items-center justify-center`}>
         <div
-          className={`relative ${compact ? 'p-2 rounded-lg' : 'p-3.5 sm:p-4 rounded-xl'} transition-all duration-300 ${
+            className={`relative ${compact ? 'p-1.5 rounded-lg' : 'p-3.5 sm:p-4 rounded-xl'} transition-all duration-300 ${
             isOn
               ? 'bg-white shadow-md'
               : 'bg-slate-50 border border-slate-100'
           }`}
         >
           <IconComponent
-            className={`${compact ? 'w-8 h-8 sm:w-9 sm:h-9' : 'w-10 h-10 sm:w-11 sm:h-11'} transition-all duration-300 ${
+            className={`${compact ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-10 h-10 sm:w-11 sm:h-11'} transition-all duration-300 ${
               meta.iconColor
             } ${device === 'FAN' && isOn ? 'animate-spin [animation-duration:2.5s]' : ''}`}
           />

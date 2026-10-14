@@ -12,7 +12,7 @@ declare global {
 
 let scriptLoadPromise: Promise<any> | null = null;
 
-const SCRIPT_TIMEOUT_MS = 15000;
+const DEFAULT_SCRIPT_TIMEOUT_MS = 15000;
 
 function loadScriptWithTimeout(script: HTMLScriptElement, timeoutMs: number) {
   return new Promise<void>((resolve, reject) => {
@@ -34,7 +34,7 @@ function loadScriptWithTimeout(script: HTMLScriptElement, timeoutMs: number) {
   });
 }
 
-export async function loadWebGazerScript(): Promise<any> {
+export async function loadWebGazerScript(scriptTimeoutMs = DEFAULT_SCRIPT_TIMEOUT_MS): Promise<any> {
   if (typeof window === 'undefined') {
     throw new Error('WebGazer can only be loaded in a browser environment');
   }
@@ -61,7 +61,7 @@ export async function loadWebGazerScript(): Promise<any> {
     script.async = true;
     script.crossOrigin = 'anonymous';
 
-    loadScriptWithTimeout(script, SCRIPT_TIMEOUT_MS)
+    loadScriptWithTimeout(script, scriptTimeoutMs)
       .then(() => {
         if (window.webgazer) {
           resolve(window.webgazer);
@@ -77,7 +77,7 @@ export async function loadWebGazerScript(): Promise<any> {
         fallbackScript.dataset.webgazer = 'fallback';
         fallbackScript.async = true;
 
-        loadScriptWithTimeout(fallbackScript, SCRIPT_TIMEOUT_MS)
+        loadScriptWithTimeout(fallbackScript, scriptTimeoutMs)
           .then(() => {
             if (window.webgazer) {
               resolve(window.webgazer);
@@ -106,6 +106,12 @@ export async function loadWebGazerScript(): Promise<any> {
  */
 export function cleanupWebGazerDOM() {
   try {
+    // webgazer.end() does not remove its document-level mouse listeners.
+    // Clear them explicitly so a stopped session cannot keep collecting
+    // mouse-assisted training samples in the background.
+    if (window.webgazer && typeof window.webgazer.removeMouseEventListeners === 'function') {
+      window.webgazer.removeMouseEventListeners();
+    }
     if (window.webgazer && typeof window.webgazer.end === 'function') {
       try {
         window.webgazer.end();
@@ -143,6 +149,9 @@ export function cleanupWebGazerDOM() {
   idsToRemove.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
+      if (id === 'webgazerVideoContainer') {
+        (el as HTMLElement & { gazePreviewCleanup?: () => void }).gazePreviewCleanup?.();
+      }
       el.style.display = 'none';
       if (el.parentNode) {
         try {

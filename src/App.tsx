@@ -13,6 +13,7 @@ import {
   ExperimentCommand,
   TrialRecord,
   SurveyData,
+  CalibrationSessionRecord,
 } from './types';
 import { useGazeTracker } from './hooks/useGazeTracker';
 import { useDwellSelection } from './hooks/useDwellSelection';
@@ -25,6 +26,7 @@ import { GazeReticle } from './components/GazeReticle';
 import { CalibrationOverlay } from './components/CalibrationOverlay';
 import { SurveyModal } from './components/SurveyModal';
 import { soundFx } from './utils/audio';
+import { loadCalibrationSessions, saveCalibrationSessions } from './utils/calibrationStorage';
 
 const INITIAL_DEVICES: DevicesMap = {
   LIGHT: 'OFF',
@@ -51,12 +53,15 @@ export default function App() {
 
   const [trials, setTrials] = useState<TrialRecord[]>([]);
   const [surveys, setSurveys] = useState<SurveyData[]>([]);
+  const [calibrationSessions, setCalibrationSessions] = useState<CalibrationSessionRecord[]>(() => loadCalibrationSessions());
   const [isSurveyOpen, setIsSurveyOpen] = useState<boolean>(false);
   const [isCalibrationOpen, setIsCalibrationOpen] = useState<boolean>(false);
   const [trialFeedback, setTrialFeedback] = useState<{
     type: 'success' | 'error' | null;
     message: string | null;
   }>({ type: null, message: null });
+
+  const isExperimentFocusView = mode === 'experiment' && isExperimentRunning;
 
   // Refs for precise asynchronous event timing and state consistency
   const commandStartTimeRef = useRef<number>(0);
@@ -101,6 +106,7 @@ export default function App() {
   const {
     trackingStatus,
     faceStatus,
+    gazeStability,
     errorMessage,
     gazeCoords,
     showGazeDot,
@@ -386,6 +392,14 @@ export default function App() {
     setSurveys((prev) => [...prev, data]);
   };
 
+  const handleCalibrationSessionComplete = (session: CalibrationSessionRecord) => {
+    setCalibrationSessions((previous) => {
+      const next = [...previous.filter((item) => item.sessionId !== session.sessionId), session];
+      saveCalibrationSessions(next);
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
       {/* Top Header Navigation */}
@@ -411,9 +425,10 @@ export default function App() {
       />
 
       {/* Main Workspace Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5 space-y-4">
+      <main className={`flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 ${isExperimentFocusView ? 'py-2.5 space-y-2.5' : 'py-4 sm:py-5 space-y-4'}`}>
         {/* Compact Prototype Framing Notice */}
-        <div className="bg-white rounded-lg border border-slate-200 px-3.5 py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-600 shadow-2xs">
+        {!isExperimentFocusView && (
+          <div className="bg-white rounded-lg border border-slate-200 px-3.5 py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-600 shadow-2xs">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
             <span className="font-semibold text-slate-800">
@@ -427,7 +442,8 @@ export default function App() {
           <span className="text-[10px] font-mono text-slate-400 shrink-0">
             No EEG / neural hardware required
           </span>
-        </div>
+          </div>
+        )}
 
         {/* PROMINENT ABOVE-THE-FOLD COMMAND BANNER */}
         <ActiveCommandBanner
@@ -453,11 +469,12 @@ export default function App() {
           onEndBlock={handleEndExperimentBlock}
         />
 
-        {/* 2-Column Responsive Workspace */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left Column: 2x2 Appliance Target Grid (8 cols on desktop) */}
-          <section className="lg:col-span-8 space-y-3">
-            <div className="flex items-center justify-between">
+        {/* Target workspace. Experiment mode keeps the four targets together and moves
+            setup/session data below them so the command and all appliances share the
+            same visual field. */}
+        <div className={`grid grid-cols-1 lg:grid-cols-12 items-start ${isExperimentFocusView ? 'gap-2 lg:gap-3' : 'gap-5'}`}>
+          <section className={`${mode === 'experiment' ? 'lg:col-span-12' : 'lg:col-span-8'} ${isExperimentFocusView ? 'space-y-1.5' : 'space-y-3'}`}>
+            <div className={`flex items-center justify-between ${isExperimentFocusView ? 'px-1' : ''}`}>
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
                   Target Appliance Selection Grid
@@ -498,7 +515,7 @@ export default function App() {
               onSelectDevice={(device) => {
                 triggerManualClick(device);
               }}
-              compact={mode === 'experiment'}
+              compact={isExperimentFocusView}
               targetHintDevice={
                 mode === 'experiment' &&
                 currentCommand &&
@@ -510,51 +527,58 @@ export default function App() {
             />
           </section>
 
-          {/* Right Column: Settings & Session/Data Area (4 cols on desktop) */}
-          <aside className="lg:col-span-4 space-y-4">
+          {/* Settings and export data stay below the full-width experiment targets. */}
+          {!isExperimentFocusView && (
+          <aside className={`${mode === 'experiment' ? 'lg:col-span-12 grid lg:grid-cols-12 gap-5 border-t border-slate-200 pt-5' : 'lg:col-span-4'} space-y-4`}>
             {/* Control Panel (Dwell Time & Settings) */}
-            <ControlPanel
-              mode={mode}
-              onModeChange={(newMode) => {
-                if (newMode === 'manual' && isExperimentRunning) {
-                  handleEndExperimentBlock();
-                }
-                setMode(newMode);
-                resetDwell();
-                setTrialFeedback({ type: null, message: null });
-              }}
-              dwellTime={dwellTime}
-              onDwellTimeChange={(time) => {
-                setDwellTime(time);
-                resetDwell();
-              }}
-              trackingStatus={trackingStatus}
-              errorMessage={errorMessage}
-              onStartTracking={async () => {
-                const started = await startTracking();
-                if (started) {
-                  setIsCalibrationOpen(true);
-                  setCameraPreviewVisible(true);
-                }
-              }}
-              onRecalibrate={handleOpenCalibration}
-              onResetAppliances={handleResetAppliances}
-            />
+            <div className={mode === 'experiment' ? 'lg:col-span-4' : undefined}>
+              <ControlPanel
+                mode={mode}
+                onModeChange={(newMode) => {
+                  if (newMode === 'manual' && isExperimentRunning) {
+                    handleEndExperimentBlock();
+                  }
+                  setMode(newMode);
+                  resetDwell();
+                  setTrialFeedback({ type: null, message: null });
+                }}
+                dwellTime={dwellTime}
+                onDwellTimeChange={(time) => {
+                  setDwellTime(time);
+                  resetDwell();
+                }}
+                trackingStatus={trackingStatus}
+                errorMessage={errorMessage}
+                onStartTracking={async () => {
+                  const started = await startTracking();
+                  if (started) {
+                    setIsCalibrationOpen(true);
+                    setCameraPreviewVisible(true);
+                  }
+                }}
+                onRecalibrate={handleOpenCalibration}
+                onResetAppliances={handleResetAppliances}
+              />
+            </div>
 
             {/* In Experiment Mode: Show Session Data & Metrics Dashboard */}
             {mode === 'experiment' && (
-              <ExperimentPanel
-                isRunning={isExperimentRunning}
-                isPaused={isExperimentPaused}
-                trials={trials}
-                dwellTime={dwellTime}
-                participantId={participantId}
-                onParticipantIdChange={setParticipantId}
-                onClearTrials={handleClearTrials}
-                onOpenSurvey={() => setIsSurveyOpen(true)}
-              />
+              <div className="lg:col-span-8">
+                <ExperimentPanel
+                  isRunning={isExperimentRunning}
+                  isPaused={isExperimentPaused}
+                  trials={trials}
+                  dwellTime={dwellTime}
+                  participantId={participantId}
+                  onParticipantIdChange={setParticipantId}
+                  onClearTrials={handleClearTrials}
+                  onOpenSurvey={() => setIsSurveyOpen(true)}
+                  calibrationSessions={calibrationSessions}
+                />
+              </div>
             )}
           </aside>
+          )}
         </div>
       </main>
 
@@ -569,12 +593,15 @@ export default function App() {
       {/* 9-Point Eye-Tracking Calibration Screen */}
       <CalibrationOverlay
         isOpen={isCalibrationOpen}
+        participantId={participantId}
         gazeCoords={gazeCoords}
         faceStatus={faceStatus}
+        gazeStability={gazeStability}
         onBeginPointCalibration={startCalibration}
         onBeginLocalCalibration={startLocalCalibration}
         onStartValidation={startValidation}
         onValidationComplete={() => undefined}
+        onCalibrationSessionComplete={handleCalibrationSessionComplete}
         onCameraPreviewVisible={setCameraPreviewVisible}
         onFinish={handleFinishCalibration}
         onCancel={handleCancelCalibration}

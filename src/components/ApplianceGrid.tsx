@@ -32,7 +32,7 @@ export const ApplianceGrid: React.FC<ApplianceGridProps> = ({
 }) => {
   return (
     <div className="w-full">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${compact ? 'gap-2 lg:gap-3' : 'gap-4 lg:gap-5'}`}>
         {ORDERED_DEVICES.map((device) => {
           const isFocused = activeHoverTarget === device;
           const isLocked = lockedDevice === device;
