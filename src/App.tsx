@@ -27,6 +27,7 @@ import { CalibrationOverlay } from './components/CalibrationOverlay';
 import { SurveyModal } from './components/SurveyModal';
 import { soundFx } from './utils/audio';
 import { loadCalibrationSessions, saveCalibrationSessions } from './utils/calibrationStorage';
+import { createId } from './utils/createId';
 
 const INITIAL_DEVICES: DevicesMap = {
   LIGHT: 'OFF',
@@ -131,7 +132,7 @@ export default function App() {
     const targetState: DeviceState = currentState === 'ON' ? 'OFF' : 'ON';
 
     return {
-      id: crypto.randomUUID(),
+      id: createId(),
       targetDevice: randomDevice,
       requestedState: targetState,
       displayText: `Turn ${targetState} the ${randomDevice}`,
@@ -212,7 +213,7 @@ export default function App() {
 
         // Log successful trial
         const newRecord: TrialRecord = {
-          id: crypto.randomUUID(),
+          id: createId(),
           trialNumber: trials.length + 1,
           participant: participantId,
           conditionDwellTime: dwellTime,
@@ -253,7 +254,7 @@ export default function App() {
       } else {
         // Wrong target selected: log error, do not set device state to target
         const newRecord: TrialRecord = {
-          id: crypto.randomUUID(),
+          id: createId(),
           trialNumber: trials.length + 1,
           participant: participantId,
           conditionDwellTime: dwellTime,
@@ -308,6 +309,10 @@ export default function App() {
     isExperimentPausedRef.current = false;
 
     const firstCmd = generateNextCommand();
+    // Keep the ref in sync with the state update so an immediate click (or
+    // dwell trigger) on the first command is accepted before React commits
+    // the next render.
+    currentCommandRef.current = firstCmd;
     setCurrentCommand(firstCmd);
     accumulatedTimeRef.current = 0;
     commandStartTimeRef.current = performance.now();
@@ -353,6 +358,7 @@ export default function App() {
     isExperimentRunningRef.current = false;
     setIsExperimentPaused(false);
     isExperimentPausedRef.current = false;
+    currentCommandRef.current = null;
     setCurrentCommand(null);
     accumulatedTimeRef.current = 0;
     resetDwell();
@@ -394,7 +400,7 @@ export default function App() {
 
   const handleCalibrationSessionComplete = (session: CalibrationSessionRecord) => {
     setCalibrationSessions((previous) => {
-      const next = [...previous.filter((item) => item.sessionId !== session.sessionId), session];
+      const next = [...previous.filter((item) => item?.sessionId !== session.sessionId), session];
       saveCalibrationSessions(next);
       return next;
     });

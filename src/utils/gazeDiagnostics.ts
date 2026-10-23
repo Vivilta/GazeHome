@@ -5,6 +5,7 @@
  */
 
 import { CALIBRATION_CONFIG } from '../config/calibration';
+import { createId } from './createId';
 
 export interface GazeDiagnosticEvent {
   timestamp: string;
@@ -29,9 +30,7 @@ function round(value: number) {
 }
 
 function createSessionId() {
-  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `gaze-${Date.now()}`;
+  return createId();
 }
 
 export function startGazeDiagnosticsSession(details: Record<string, unknown> = {}) {

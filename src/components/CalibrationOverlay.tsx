@@ -28,6 +28,7 @@ import {
 import { soundFx } from '../utils/audio';
 import { CALIBRATION_CONFIG } from '../config/calibration';
 import { logGazeDiagnostic } from '../utils/gazeDiagnostics';
+import { createId } from '../utils/createId';
 
 interface CalibrationOverlayProps {
   isOpen: boolean;
@@ -294,7 +295,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   const validationFilteredSamplesRef = useRef<number[][]>(VALIDATION_POINTS.map(() => []));
   const calibrationSampleRecordsRef = useRef<CalibrationSampleRecord[]>([]);
   const validationSampleRecordsRef = useRef<CalibrationSampleRecord[]>([]);
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const sessionIdRef = useRef<string>(createId());
   const sessionModeRef = useRef<'full' | 'local'>('full');
   const collectingRef = useRef(false);
   const stableSinceRef = useRef<number | null>(null);
@@ -303,6 +304,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   const latestGazeRef = useRef(gazeCoords);
   const latestFaceStatusRef = useRef(faceStatus);
   const latestGazeStabilityRef = useRef(gazeStability);
+  const validationRunRef = useRef(0);
   latestGazeRef.current = gazeCoords;
   latestFaceStatusRef.current = faceStatus;
   latestGazeStabilityRef.current = gazeStability;
@@ -316,7 +318,11 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   }, [onCalibrationSessionComplete]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      validationRunRef.current += 1;
+      return;
+    }
+    validationRunRef.current += 1;
     logGazeDiagnostic('calibration_overlay_opened', { participantId });
     setPhase('setup');
     setPoints(INITIAL_POINTS);
@@ -337,7 +343,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     validationFilteredSamplesRef.current = VALIDATION_POINTS.map(() => []);
     calibrationSampleRecordsRef.current = [];
     validationSampleRecordsRef.current = [];
-    sessionIdRef.current = crypto.randomUUID();
+    sessionIdRef.current = createId();
     sessionModeRef.current = 'full';
     collectingRef.current = false;
     calibrationSamplesRef.current = 0;
@@ -411,13 +417,24 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   }, [isOpen, phase, activePointIndex, captureEpoch, faceStatus, gazeCoords.isValid]);
 
   useEffect(() => {
-    if (!isOpen || phase !== 'validating') return;
+    // A cancelled/restarted validation can leave one already queued animation
+    // frame behind. Never let that stale frame index into the point list.
+    if (
+      !isOpen
+      || phase !== 'validating'
+      || validationIndex < 0
+      || validationIndex >= VALIDATION_POINTS.length
+    ) return;
 
     validationSamplesRef.current = [];
     collectingRef.current = false;
     setIsCollecting(false);
     setValidationProgress(0);
 
+    const validationRun = validationRunRef.current + 1;
+    validationRunRef.current = validationRun;
+    let runActive = true;
+    const isRunActive = () => runActive && validationRunRef.current === validationRun;
     const startedAt = performance.now();
     let collectionStarted = false;
     let lastSampledAt = 0;
@@ -425,13 +442,27 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     let animationFrameId = 0;
 
     const finishValidationPoint = () => {
+      if (!isRunActive()) return;
+      runActive = false;
       collectingRef.current = false;
       setIsCollecting(false);
       setValidationProgress(1);
 
+      const validationPoint = VALIDATION_POINTS[validationIndex];
+      if (!validationPoint) {
+        logGazeDiagnostic('calibration_validation_point_skipped', {
+          reason: 'validation_index_out_of_bounds',
+          validationIndex,
+        });
+        setValidationIndex(0);
+        setValidationProgress(0);
+        setPhase('setup');
+        return;
+      }
+
       const rawPointSamples = validationSamplesRef.current;
       const filteredPointSamples = filterOutlierErrors(rawPointSamples);
-      const pointId = VALIDATION_POINTS[validationIndex].id;
+      const pointId = validationPoint.id;
       const retainedErrors = [...filteredPointSamples];
       validationSampleRecordsRef.current
         .filter((sample) => sample.pointId === pointId)
@@ -447,7 +478,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
       validationRawSamplesRef.current[validationIndex] = rawPointSamples;
       validationFilteredSamplesRef.current[validationIndex] = filteredPointSamples;
       logGazeDiagnostic('calibration_validation_point_completed', {
-        pointIndex: VALIDATION_POINTS[validationIndex].calibrationPointIndex,
+        pointIndex: validationPoint.calibrationPointIndex,
         pointId,
         rawSampleCount: rawPointSamples.length,
         retainedSampleCount: filteredPointSamples.length,
@@ -544,6 +575,12 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     };
 
     const updateValidationProgress = () => {
+      if (!isRunActive()) return;
+      const validationPoint = VALIDATION_POINTS[validationIndex];
+      if (!validationPoint) {
+        finishValidationPoint();
+        return;
+      }
       const elapsed = performance.now() - startedAt;
 
       if (elapsed >= VALIDATION_SETTLE_MS && !collectionStarted) {
@@ -560,13 +597,13 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         && performance.now() - latestGazeRef.current.timestamp <= CALIBRATION_CONFIG.gaze.freshnessTimeoutMs
         && performance.now() - lastSampledAt >= VALIDATION_SAMPLE_INTERVAL_MS
       ) {
-        const target = getScreenPoint(VALIDATION_POINTS[validationIndex]);
+        const target = getScreenPoint(validationPoint);
         const predicted = latestGazeRef.current;
         const distance = Math.hypot(predicted.x - target.x, predicted.y - target.y);
         if (Number.isFinite(distance)) {
           logGazeDiagnostic('calibration_validation_sample', {
-            pointIndex: VALIDATION_POINTS[validationIndex].calibrationPointIndex,
-            pointId: VALIDATION_POINTS[validationIndex].id,
+            pointIndex: validationPoint.calibrationPointIndex,
+            pointId: validationPoint.id,
             sampleNumber: validationSamplesRef.current.length + 1,
             targetX: Math.round(target.x),
             targetY: Math.round(target.y),
@@ -580,13 +617,13 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
           });
           validationSamplesRef.current.push(distance);
           validationSampleRecordsRef.current.push({
-            sampleId: crypto.randomUUID(),
+            sampleId: createId(),
             sessionId: sessionIdRef.current,
             participant: participantId,
             phase: 'validation',
-            pointId: VALIDATION_POINTS[validationIndex].id,
-            pointIndex: VALIDATION_POINTS[validationIndex].calibrationPointIndex,
-            region: VALIDATION_POINTS[validationIndex].label.toLowerCase().replaceAll(' ', '-'),
+            pointId: validationPoint.id,
+            pointIndex: validationPoint.calibrationPointIndex,
+            region: validationPoint.label.toLowerCase().replaceAll(' ', '-'),
             targetX: target.x,
             targetY: target.y,
             predictedX: predicted.x,
@@ -621,6 +658,8 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
 
     animationFrameId = window.requestAnimationFrame(updateValidationProgress);
     return () => {
+      runActive = false;
+      validationRunRef.current += 1;
       window.cancelAnimationFrame(animationFrameId);
       collectingRef.current = false;
     };
@@ -638,8 +677,11 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     0,
   );
   const totalSamples = visiblePointIndexes.length * CALIBRATION_SAMPLES_PER_POINT;
-  const calibrationProgress = Math.round((completedSamples / totalSamples) * 100);
-  const validationTarget = VALIDATION_POINTS[validationIndex];
+  const calibrationProgress = totalSamples > 0
+    ? Math.round((completedSamples / totalSamples) * 100)
+    : 0;
+  // Keep rendering safe while a stale validation frame is being discarded.
+  const validationTarget = VALIDATION_POINTS[validationIndex] ?? VALIDATION_POINTS[0];
   const status = faceStatusCopy(faceStatus);
   const previewTarget = phase === 'validating' ? validationTarget : activePoint;
   const previewAnchor = previewTarget ? getPreviewAnchor(previewTarget) : 'top-right';
@@ -741,7 +783,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         trainingSampleCountAfter: capture.trainingSampleCountAfter,
       });
       calibrationSampleRecordsRef.current.push({
-        sampleId: crypto.randomUUID(),
+        sampleId: createId(),
         sessionId: sessionIdRef.current,
         participant: participantId,
         phase: 'training',
@@ -827,7 +869,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     setIsLocalCalibration(false);
     setLocalRegionLabel(null);
     setLocalPointIndexes([]);
-    sessionIdRef.current = crypto.randomUUID();
+    sessionIdRef.current = createId();
     sessionModeRef.current = 'full';
     calibrationSampleRecordsRef.current = [];
     validationSampleRecordsRef.current = [];
@@ -862,7 +904,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     setLocalPointIndexes(selectedPointIndexes);
     setIsLocalCalibration(true);
     setLocalRegionLabel(selectedRegions.map((region) => region.label).join(', '));
-    sessionIdRef.current = crypto.randomUUID();
+    sessionIdRef.current = createId();
     sessionModeRef.current = 'local';
     calibrationSampleRecordsRef.current = [];
     validationSampleRecordsRef.current = [];
@@ -1081,7 +1123,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
     const selectedLocalCandidates = localCandidates.filter((region) => selectedLocalRegionIds.includes(region.id));
     const canRecalibrateLocally = selectedLocalCandidates.length > 0;
     return (
-      <div className="relative z-10 mx-auto mt-8 mb-24 w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center text-white shadow-2xl sm:p-7">
+      <div className="relative z-10 mx-auto mt-8 mb-40 w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900/95 p-6 text-center text-white shadow-2xl sm:mb-32 sm:p-7">
         {passed ? (
           <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-400" />
         ) : (
@@ -1220,14 +1262,14 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 select-none overflow-y-auto bg-slate-950/95 text-white backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex min-h-0 flex-col select-none overflow-y-auto bg-slate-950/95 text-white backdrop-blur-md">
       {phase === 'setup' && renderSetup()}
       {phase === 'calibrating' && renderCalibration()}
       {phase === 'validating' && renderValidation()}
       {phase === 'result' && renderResult()}
 
-      <div className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-between border-t border-slate-800 bg-slate-950/90 p-4 text-xs text-slate-400 sm:p-5">
-        <span>
+      <div className="mt-auto flex shrink-0 flex-col gap-3 border-t border-slate-800 bg-slate-950/95 p-4 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <span className="min-w-0">
           {phase === 'setup' && 'The soft face guide is optional and appears only during camera setup.'}
           {phase === 'calibrating' && 'Each label uses a new eye-feature frame while face position is stable.'}
           {phase === 'validating' && 'Look at each target for up to 4.2 seconds. No clicks are required.'}
@@ -1236,7 +1278,7 @@ export const CalibrationOverlay: React.FC<CalibrationOverlayProps> = ({
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+          className="inline-flex shrink-0 items-center gap-1.5 self-end rounded-lg border border-slate-700 px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white sm:self-auto"
         >
           <X className="h-3.5 w-3.5" />
           Cancel

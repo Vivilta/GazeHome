@@ -33,10 +33,14 @@ npm install
 npm run dev
 ```
 
-Open the URL printed in the terminal, usually:
+The development server uses HTTPS so camera access works from other devices on the local network. Open the HTTPS `Network` URL printed in the terminal, for example `https://192.168.1.20:3000/`. The basic SSL plugin uses a locally generated, untrusted certificate, so the browser may show a certificate warning on first visit. Continue only when you recognize the device and local network running the app. The `localhost` URL printed by Vite can also be used on the development computer.
+
+If the browser offers no way to continue past the certificate warning, use `localhost` on the development computer or configure a trusted certificate for the machine hosting the app.
+
+The server usually listens on port `3000`; if it is occupied, Vite may choose another port. Always use the HTTPS URL printed in the terminal.
 
 ```text
-http://localhost:3000/
+https://localhost:3000/
 ```
 
 Keep the terminal window running while using the app. Press `Ctrl+C` in that terminal to stop the development server.
@@ -45,7 +49,7 @@ If port `3000` is already occupied, Vite may select the next available port. Alw
 
 ## 3. First-Time Camera Setup
 
-1. Open the app at `http://localhost:3000/`.
+1. Open the HTTPS URL printed by Vite. For local use this is usually `https://localhost:3000/`.
 2. Click `Start Tracking` in the header or in the `Actions & Calibration` panel.
 3. When the browser asks for camera access, choose `Allow`.
 4. In `Set up your camera position`, make sure the face and both eyes are visible in the preview.
